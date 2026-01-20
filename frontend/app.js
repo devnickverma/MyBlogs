@@ -1,92 +1,134 @@
 const API_URL = "https://myblogs-skti.onrender.com";
 
 // DOM Elements
-const authSection = document.getElementById("auth-section");
-const tabLogin = document.getElementById("tab-login");
-const tabSignup = document.getElementById("tab-signup");
-const loginForm = document.getElementById("login-form");
-const signupForm = document.getElementById("signup-form");
-const logoutBtn = document.getElementById("logout-btn");
-const welcomeMsg = document.getElementById("welcome-msg");
-const createPostSection = document.getElementById("create-post-section");
-const createPostForm = document.getElementById("create-post-form");
-const postsContainer = document.getElementById("posts-container");
-const refreshBtn = document.getElementById("refresh-btn");
-const messageContainer = document.getElementById("message-container");
+const authModal = new bootstrap.Modal(document.getElementById('authModal'));
+const loginTriggerBtn = document.getElementById('login-trigger-btn');
+const signupTriggerBtn = document.getElementById('signup-trigger-btn');
+const heroSection = document.getElementById('hero-section');
+
+const loginForm = document.getElementById('login-form');
+const signupForm = document.getElementById('signup-form');
+const loginTab = document.getElementById('login-tab');
+const signupTab = document.getElementById('signup-tab');
+
+const logoutBtn = document.getElementById('logout-btn');
+const welcomeMsg = document.getElementById('welcome-msg');
+
+const createPostSection = document.getElementById('create-post-section');
+const createPostForm = document.getElementById('create-post-form');
+
+const postsContainer = document.getElementById('posts-container');
+const refreshBtn = document.getElementById('refresh-btn');
+const toastContainer = document.querySelector('.toast-container');
 
 // State
 let token = localStorage.getItem("access_token");
 
 // --- Initialization ---
 function init() {
-    setupTabs();
+    setupAuthTriggers();
     updateAuthUI();
     fetchPosts();
 }
 
-function setupTabs() {
-    tabLogin.addEventListener("click", () => {
-        switchTab("login");
+// --- Auth Modal Triggers ---
+function setupAuthTriggers() {
+    loginTriggerBtn.addEventListener('click', () => {
+        loginTab.click(); // Switch to login tab
+        authModal.show();
     });
-    tabSignup.addEventListener("click", () => {
-        switchTab("signup");
+    
+    signupTriggerBtn.addEventListener('click', () => {
+        signupTab.click(); // Switch to signup tab
+        authModal.show();
     });
 }
 
-function switchTab(mode) {
-    if (mode === "login") {
-        tabLogin.classList.add("active");
-        tabSignup.classList.remove("active");
-        loginForm.classList.remove("hidden");
-        signupForm.classList.add("hidden");
+// Password toggle
+window.togglePassword = (fieldId) => {
+    const field = document.getElementById(fieldId);
+    const icon = document.getElementById(`${fieldId}-icon`);
+    
+    if (field.type === 'password') {
+        field.type = 'text';
+        icon.classList.remove('bi-eye');
+        icon.classList.add('bi-eye-slash');
     } else {
-        tabLogin.classList.remove("active");
-        tabSignup.classList.add("active");
-        loginForm.classList.add("hidden");
-        signupForm.classList.remove("hidden");
+        field.type = 'password';
+        icon.classList.remove('bi-eye-slash');
+        icon.classList.add('bi-eye');
     }
-}
+};
 
+// --- UI State ---
 function updateAuthUI() {
     if (token) {
-        authSection.classList.add("hidden");
-        logoutBtn.classList.remove("hidden");
-        welcomeMsg.classList.remove("hidden");
-        welcomeMsg.textContent = "Welcome back!";
-        createPostSection.classList.remove("hidden");
+        // Logged in
+        heroSection.classList.add('d-none');
+        loginTriggerBtn.classList.add('d-none');
+        signupTriggerBtn.classList.add('d-none');
+        
+        logoutBtn.classList.remove('d-none');
+        welcomeMsg.classList.remove('d-none');
+        welcomeMsg.textContent = 'Welcome back';
+        
+        createPostSection.classList.remove('d-none');
     } else {
-        authSection.classList.remove("hidden");
-        logoutBtn.classList.add("hidden");
-        welcomeMsg.classList.add("hidden");
-        createPostSection.classList.add("hidden");
-        // Reset to login tab
-        switchTab("login");
+        // Logged out
+        heroSection.classList.remove('d-none');
+        loginTriggerBtn.classList.remove('d-none');
+        signupTriggerBtn.classList.remove('d-none');
+        
+        logoutBtn.classList.add('d-none');
+        welcomeMsg.classList.add('d-none');
+        
+        createPostSection.classList.add('d-none');
     }
 }
 
-function showMessage(msg, type = "success") {
-    messageContainer.innerHTML = `<div class="message message-${type}">${msg}</div>`;
-    setTimeout(() => {
-        messageContainer.innerHTML = "";
-    }, 5000);
+// --- Toast Notifications ---
+function showToast(message, type = "success") {
+    const bgClass = type === "success" ? "text-bg-success" : "text-bg-danger";
+    
+    const toastHtml = `
+        <div class="toast align-items-center ${bgClass} border-0" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">${escapeHtml(message)}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    `;
+    
+    const div = document.createElement('div');
+    div.innerHTML = toastHtml;
+    const toastEl = div.firstElementChild;
+    toastContainer.appendChild(toastEl);
+    
+    const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+    toast.show();
+    
+    toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
 }
 
-function setLoading(btn, isLoading, text) {
+function toggleLoading(btn, isLoading) {
+    const spinner = btn.querySelector('.spinner-border');
+    const text = btn.querySelector('.btn-text');
+    
     if (isLoading) {
         btn.disabled = true;
-        btn.textContent = "Processing...";
+        spinner.classList.remove('d-none');
+        text.classList.add('invisible');
     } else {
         btn.disabled = false;
-        btn.textContent = text;
+        spinner.classList.add('d-none');
+        text.classList.remove('invisible');
     }
 }
 
 // --- API Calls ---
-
 async function login(email, password, btn) {
-    setLoading(btn, true);
+    toggleLoading(btn, true);
     
-    // CRITICAL FIX: Use URLSearchParams for application/x-www-form-urlencoded
     const params = new URLSearchParams();
     params.append("username", email);
     params.append("password", password);
@@ -94,31 +136,34 @@ async function login(email, password, btn) {
     try {
         const response = await fetch(`${API_URL}/token`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded"
-            },
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: params,
         });
 
         if (!response.ok) {
-             const data = await response.json();
-             throw new Error(data.detail || "Login failed");
+            const data = await response.json();
+            throw new Error(data.detail || "Login failed");
         }
 
         const data = await response.json();
         token = data.access_token;
         localStorage.setItem("access_token", token);
+        
+        authModal.hide();
         updateAuthUI();
-        showMessage("Logged in successfully!");
+        showToast("Logged in successfully");
+        
+        loginForm.reset();
     } catch (err) {
-        showMessage(err.message, "error");
+        showToast(err.message, "error");
     } finally {
-        setLoading(btn, false, "Log In");
+        toggleLoading(btn, false);
     }
 }
 
 async function signup(email, password, btn) {
-    setLoading(btn, true);
+    toggleLoading(btn, true);
+    
     try {
         const response = await fetch(`${API_URL}/users/`, {
             method: "POST",
@@ -127,21 +172,18 @@ async function signup(email, password, btn) {
         });
 
         if (response.ok) {
-            showMessage("Account created! Please login.");
-            switchTab("login");
-            // Pre-fill login email
-            document.getElementById("email").value = email;
-            // Clear signup form
-            document.getElementById("signup-email").value = "";
-            document.getElementById("signup-password").value = "";
+            showToast("Account created! Please log in.");
+            loginTab.click();
+            document.getElementById('email').value = email;
+            signupForm.reset();
         } else {
             const data = await response.json();
             throw new Error(data.detail || "Signup failed");
         }
     } catch (err) {
-        showMessage(err.message, "error");
+        showToast(err.message, "error");
     } finally {
-        setLoading(btn, false, "Create Account");
+        toggleLoading(btn, false);
     }
 }
 
@@ -149,11 +191,10 @@ function logout() {
     token = null;
     localStorage.removeItem("access_token");
     updateAuthUI();
-    showMessage("Logged out.");
+    showToast("Logged out");
 }
 
 async function fetchPosts() {
-    postsContainer.innerHTML = '<div class="loading-spinner">Loading posts...</div>';
     try {
         const response = await fetch(`${API_URL}/posts/`);
         if (!response.ok) throw new Error("Failed to fetch posts");
@@ -161,13 +202,17 @@ async function fetchPosts() {
         const posts = await response.json();
         renderPosts(posts);
     } catch (err) {
-        postsContainer.innerHTML = '<div class="message message-error">Failed to load posts.</div>';
+        postsContainer.innerHTML = `
+            <div class="alert alert-danger alert-sm">
+                Failed to load posts. Please try again.
+            </div>
+        `;
     }
 }
 
 async function createPost(title, content, btn) {
     if (!token) return;
-    setLoading(btn, true);
+    toggleLoading(btn, true);
 
     try {
         const response = await fetch(`${API_URL}/posts/`, {
@@ -181,27 +226,31 @@ async function createPost(title, content, btn) {
 
         if (!response.ok) throw new Error("Failed to create post");
 
-        showMessage("Post published!");
+        showToast("Post published");
         createPostForm.reset();
-        fetchPosts(); 
+        fetchPosts();
     } catch (err) {
-        showMessage("Error creating post. Try again.", "error");
+        showToast("Error creating post", "error");
     } finally {
-        setLoading(btn, false, "Publish Post");
+        toggleLoading(btn, false);
     }
 }
 
-async function toggleLike(postId, isLiked) {
+// Like handler
+window.handleLike = async (postId, btn) => {
     if (!token) {
-        showMessage("Please login to like posts", "error");
+        showToast("Please log in to like posts", "error");
+        loginTriggerBtn.click();
         return;
     }
-
-    const method = isLiked ? "DELETE" : "POST";
+    
+    const icon = btn.querySelector('i');
+    const wasLiked = btn.classList.contains('liked');
     
     try {
+        const method = wasLiked ? "DELETE" : "POST";
         const response = await fetch(`${API_URL}/likes/`, {
-            method: method,
+            method,
             headers: {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${token}`
@@ -210,37 +259,64 @@ async function toggleLike(postId, isLiked) {
         });
         
         if (response.ok) {
-            fetchPosts(); 
-        } else {
-            const data = await response.json();
-            if (response.status === 400 && data.detail) {
-                 showMessage(data.detail, "error");
+            if (wasLiked) {
+                btn.classList.remove('liked');
+                icon.classList.remove('bi-heart-fill');
+                icon.classList.add('bi-heart');
+            } else {
+                btn.classList.add('liked');
+                icon.classList.remove('bi-heart');
+                icon.classList.add('bi-heart-fill');
             }
+        } else if (response.status === 400 && !wasLiked) {
+            // Already liked, toggle to unlike
+            btn.classList.add('liked');
+            icon.classList.remove('bi-heart');
+            icon.classList.add('bi-heart-fill');
         }
     } catch (err) {
         console.error(err);
     }
-}
+};
 
 // --- Rendering ---
-
 function renderPosts(posts) {
     postsContainer.innerHTML = "";
+    
+    if (posts.length === 0) {
+        const emptyTemplate = document.getElementById('empty-state-template');
+        postsContainer.innerHTML = emptyTemplate.innerHTML;
+        return;
+    }
+
     posts.forEach(post => {
-        const date = new Date(post.created_at).toLocaleDateString();
+        const dateObj = new Date(post.created_at);
+        const dateStr = dateObj.toLocaleDateString(undefined, { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+        });
         
-        const card = document.createElement("div");
-        card.className = "post-card";
+        const card = document.createElement('div');
+        card.className = 'card border shadow-sm post-card';
         card.innerHTML = `
-            <div class="post-header">
-                <div class="post-title">${escapeHtml(post.title)}</div>
-                <div class="post-date">${date}</div>
-            </div>
-            <div class="post-body">${escapeHtml(post.content)}</div>
-            <div class="post-footer">
-                <button class="btn-icon" onclick="toggleLike(${post.id}, false)" title="Like">
-                    ❤ Like
-                </button>
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <h6 class="post-title mb-1">${escapeHtml(post.title)}</h6>
+                        <div class="post-meta">
+                            <small class="text-muted">Posted ${dateStr}</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <p class="post-content mb-3">${escapeHtml(post.content)}</p>
+                
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-light like-btn" onclick="handleLike(${post.id}, this)">
+                        <i class="bi bi-heart me-1"></i>Like
+                    </button>
+                </div>
             </div>
         `;
         postsContainer.appendChild(card);
@@ -257,36 +333,35 @@ function escapeHtml(text) {
 }
 
 // --- Event Listeners ---
-
-loginForm.addEventListener("submit", (e) => {
+loginForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const btn = e.submitter;
-    const email = document.getElementById("email").value;
-    const password = document.getElementById("password").value;
-    login(email, password, btn);
+    login(
+        document.getElementById('email').value,
+        document.getElementById('password').value,
+        e.submitter
+    );
 });
 
-signupForm.addEventListener("submit", (e) => {
+signupForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const btn = e.submitter;
-    const email = document.getElementById("signup-email").value;
-    const password = document.getElementById("signup-password").value;
-    signup(email, password, btn);
+    signup(
+        document.getElementById('signup-email').value,
+        document.getElementById('signup-password').value,
+        e.submitter
+    );
 });
 
-logoutBtn.addEventListener("click", logout);
-
-createPostForm.addEventListener("submit", (e) => {
+createPostForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const btn = e.submitter;
-    const title = document.getElementById("post-title").value;
-    const content = document.getElementById("post-content").value;
-    createPost(title, content, btn);
+    createPost(
+        document.getElementById('post-title').value,
+        document.getElementById('post-content').value,
+        e.submitter
+    );
 });
 
-refreshBtn.addEventListener("click", fetchPosts);
-
-window.toggleLike = toggleLike; 
+logoutBtn.addEventListener('click', logout);
+refreshBtn.addEventListener('click', fetchPosts);
 
 // Start
 init();
